@@ -6,6 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -17,6 +20,8 @@ type serverInfo struct {
 	router http.Handler
 	name   string
 }
+
+var counter uint64
 
 func main() {
 
@@ -54,24 +59,30 @@ func main() {
 		}(info, i)
 	}
 
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+
 	select {
 	case err := <-errors:
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
+		log.Printf("Got an error %v", err)
+	case sig := <-interrupt:
+		log.Printf("Received the signal %v", sig)
+	}
 
-		for _, s := range servers {
-			shutdownError := s.Shutdown(ctx)
-			if shutdownError != nil {
-				fmt.Println(shutdownError.Error())
-			}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, s := range servers {
+		shutdownError := s.Shutdown(ctx)
+		if shutdownError != nil {
+			fmt.Println(shutdownError.Error())
 		}
-		log.Fatal(err.Error())
 	}
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "The help handler was called")
-	fmt.Fprint(w, http.StatusText(http.StatusOK))
+	atomic.AddUint64(&counter, 1)
+	fmt.Fprintf(w, "The help handler was called %v times", atomic.LoadUint64(&counter))
 }
 
 func getPort(name string) string {
