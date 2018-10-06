@@ -1,33 +1,77 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/skhvan1111/go-first/internal/diagnostics"
 )
 
+type serverInfo struct {
+	port   string
+	router http.Handler
+	name   string
+}
+
 func main() {
-	log.Print("Hello, World")
+
+	errors := make(chan error, 2)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/", hello)
 
-	go func() {
-		err := http.ListenAndServe(":8081", router)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-	}()
+	serverConfigurations := []serverInfo{
+		{
+			port:   getPort("PORT"),
+			router: router,
+			name:   "application server",
+		},
+		{
+			port:   getPort("DIAG_PORT"),
+			router: diagnostics.NewDiagnostics(),
+			name:   "diagnostics server",
+		},
+	}
 
-	diagnostics1 := diagnostics.NewRouter()
-	err := http.ListenAndServe(":8585", diagnostics1)
-	if err != nil {
+	servers := make([]*http.Server, 2)
+
+	for i, info := range serverConfigurations {
+		go func(info serverInfo, index int) {
+			log.Print("The " + info.name + " is preparing to handle connections...")
+			servers[index] = &http.Server{
+				Addr:    info.port,
+				Handler: info.router,
+			}
+			err := servers[index].ListenAndServe()
+			if err != nil {
+				errors <- err
+			}
+		}(info, i)
+	}
+
+	select {
+	case err := <-errors:
+		for _, s := range servers {
+			c, _ := context.WithTimeout(context.Background(), 1)
+			s.Shutdown(c)
+		}
 		log.Fatal(err.Error())
 	}
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "The help handler was called")
 	fmt.Fprint(w, http.StatusText(http.StatusOK))
+}
+
+func getPort(name string) string {
+	port := os.Getenv(name)
+	if len(port) == 0 {
+		log.Fatal(name + " is not set up")
+	}
+	return ":" + port
 }
