@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/skhvan1111/go-first/internal/diagnostics"
@@ -55,9 +56,14 @@ func main() {
 
 	select {
 	case err := <-errors:
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+
 		for _, s := range servers {
-			c, _ := context.WithTimeout(context.Background(), 1)
-			s.Shutdown(c)
+			shutdownError := s.Shutdown(ctx)
+			if shutdownError != nil {
+				fmt.Println(shutdownError.Error())
+			}
 		}
 		log.Fatal(err.Error())
 	}
