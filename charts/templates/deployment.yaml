@@ -35,6 +35,16 @@ spec:
           value: "{{ .Values.service.externalPort }}"
         - name: DIAG_PORT
           value: "{{ .Values.service.internalPort }}"
+        - name: REDIS_ADDRESS
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: REDIS_ADDRESS.secret
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: REDIS_PASSWORD.secret
         ports:
         - containerPort: {{ .Values.service.internalPort }}
         - containerPort: {{ .Values.service.externalPort }}

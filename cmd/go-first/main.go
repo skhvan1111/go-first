@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/skhvan1111/go-first/internal/redis"
+	"github.com/skhvan1111/go-first/internal/counter"
 	"github.com/skhvan1111/go-first/internal/diagnostics"
 )
 
@@ -21,11 +22,10 @@ type serverInfo struct {
 	name   string
 }
 
-var counter uint64
-
 func main() {
-
 	errors := make(chan error, 2)
+
+	redis.Init(os.Getenv("REDIS_ADDRESS"), os.Getenv("REDIS_PASSWORD"))
 
 	router := mux.NewRouter()
 	router.HandleFunc("/", hello)
@@ -81,8 +81,13 @@ func main() {
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	atomic.AddUint64(&counter, 1)
-	fmt.Fprintf(w, "The help handler was called %v times", atomic.LoadUint64(&counter))
+	count, err := counter.Increase()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Error occured: %v", err)
+	} else {
+		fmt.Fprintf(w, "Page viewed %v times", count)
+	}
 }
 
 func getPort(name string) string {
